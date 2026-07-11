@@ -1,0 +1,23 @@
+{
+  "name": "ha-heatmap-card",
+  "version": "0.1.0",
+  "description": "Home Assistant Lovelace custom card rendering IDW heatmaps",
+  "scripts": {
+    "build": "esbuild src/ha-heatmap-card.ts --bundle --minify --outfile=dist/ha-heatmap-card.js",
+    "build:preview": "esbuild src/preview.ts --bundle --outfile=dist/preview.js",
+    "dev": "esbuild src/ha-heatmap-card.ts --bundle --outfile=dist/ha-heatmap-card.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "lit": "^3.3.3"
+  }
+}

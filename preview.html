@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ha-heatmap-card — Visual Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      padding: 32px;
+    }
+
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { color: #777; font-size: 13px; margin-bottom: 32px; }
+
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    .legend-wrap { margin-bottom: 40px; }
+    .legend-wrap canvas { border-radius: 6px; display: block; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, max-content);
+      gap: 24px;
+    }
+
+    .scenario {
+      background: #1a1a2e;
+      border: 1px solid #2a2a40;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .scenario-header {
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid #2a2a40;
+    }
+
+    .scenario-header h3 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+    .scenario-header p  { font-size: 11px; color: #666; }
+
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+  <h1>ha-heatmap-card</h1>
+  <p class="subtitle">Visual smoke test — IDW rendering engine</p>
+
+  <div class="legend-wrap">
+    <p class="section-label">Color gradient &mdash; cold (min) to hot (max)</p>
+    <canvas id="legend"></canvas>
+  </div>
+
+  <div class="grid">
+
+    <div class="scenario">
+      <div class="scenario-header">
+        <h3>Mixed temperatures</h3>
+        <p>4 sensors spanning 18–27 °C</p>
+      </div>
+      <canvas id="canvas-0"></canvas>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-header">
+        <h3>Single hot spot</h3>
+        <p>27 °C centre sensor, 18 °C corners</p>
+      </div>
+      <canvas id="canvas-1"></canvas>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-header">
+        <h3>Single cold spot</h3>
+        <p>18 °C centre sensor, 27 °C corners</p>
+      </div>
+      <canvas id="canvas-2"></canvas>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-header">
+        <h3>Low resolution (scale = 0.12)</h3>
+        <p>Same sensors as "Mixed" — downsampled grid</p>
+      </div>
+      <canvas id="canvas-3"></canvas>
+    </div>
+
+  </div>
+
+  <script src="dist/preview.js"></script>
+</body>
+</html>
