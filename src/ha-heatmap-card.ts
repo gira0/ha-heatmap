@@ -138,7 +138,12 @@ class HaHeatmapCard extends LitElement {
     if (config.edit_mode !== undefined && typeof config.edit_mode !== 'boolean') {
       throw new Error('ha-heatmap-card: edit_mode must be true or false');
     }
-    this._config = config;
+    // Home Assistant may freeze the configuration object it passes to cards.
+    // Keep a private copy because calibration mode updates entity coordinates.
+    this._config = {
+      ...config,
+      entities: config.entities.map((entity) => ({ ...entity })),
+    };
     this._lastStates = {};
     this._imageLoaded = false;
     this.requestUpdate();
