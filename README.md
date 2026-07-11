@@ -1,6 +1,14 @@
-# ha-heatmap-card
+<p align="center">
+  <img src="assets/heatmap-card-icon.svg" alt="Home Assistant Heatmap Card logo" width="128" />
+</p>
 
-A Home Assistant Lovelace custom card that renders IDW (Inverse Distance Weighting) heatmaps over a floorplan image. Sensor temperatures are interpolated across the image using IDW mathematics and painted via `OffscreenCanvas` for non-blocking rendering.
+<h1 align="center">Home Assistant Heatmap Card</h1>
+
+<p align="center">
+  A Lovelace floorplan card with real-time IDW temperature heatmaps.
+</p>
+
+Render IDW (Inverse Distance Weighting) heatmaps over a floorplan image. Sensor temperatures are interpolated across the image and painted through `OffscreenCanvas` for non-blocking recalculation.
 
 ## Installation
 
