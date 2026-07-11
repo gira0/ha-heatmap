@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { renderHeatmap } from './renderer';
 import type { SensorPoint } from './types';
+import { resolveTemperatureRange, type TemperatureScaleMode } from './temperature-scale';
 
 /** A bundled placeholder so a newly added card is useful before configuration. */
 const DEFAULT_FLOORPLAN_SVG = `data:image/svg+xml,${encodeURIComponent(`
@@ -41,6 +42,11 @@ interface CardConfig {
   entities: EntityConfig[];
   min_value?: number;
   max_value?: number;
+  temperature_scale?: TemperatureScaleMode;
+  scale_padding?: number;
+  min_span?: number;
+  clamp_min?: number;
+  clamp_max?: number;
   power?: number;
   resolution_scale?: number;
   opacity?: number;
@@ -186,6 +192,9 @@ class HaHeatmapCard extends LitElement {
     if (config.edit_mode !== undefined && typeof config.edit_mode !== 'boolean') {
       throw new Error('ha-heatmap-card: edit_mode must be true or false');
     }
+    if (config.temperature_scale !== undefined && !['fixed', 'auto'].includes(config.temperature_scale)) {
+      throw new Error('ha-heatmap-card: temperature_scale must be fixed or auto');
+    }
     // Home Assistant may freeze the configuration object it passes to cards.
     // Keep a private copy because calibration mode updates entity coordinates.
     this._config = {
@@ -321,6 +330,11 @@ class HaHeatmapCard extends LitElement {
     const optional = [
       ['min_value', config.min_value],
       ['max_value', config.max_value],
+      ['temperature_scale', config.temperature_scale],
+      ['scale_padding', config.scale_padding],
+      ['min_span', config.min_span],
+      ['clamp_min', config.clamp_min],
+      ['clamp_max', config.clamp_max],
       ['power', config.power],
       ['resolution_scale', config.resolution_scale],
       ['opacity', config.opacity],
@@ -374,12 +388,22 @@ class HaHeatmapCard extends LitElement {
 
     if (points.length === 0) return;
 
+    const range = resolveTemperatureRange(points.map((point) => point.value), {
+      mode: this._config.temperature_scale ?? 'fixed',
+      minValue: this._config.min_value ?? 18,
+      maxValue: this._config.max_value ?? 27,
+      padding: this._config.scale_padding ?? 2,
+      minSpan: this._config.min_span ?? 6,
+      clampMin: this._config.clamp_min,
+      clampMax: this._config.clamp_max,
+    });
+
     const offscreen = renderHeatmap({
       width,
       height,
       points,
-      minValue:        this._config.min_value        ?? 18,
-      maxValue:        this._config.max_value        ?? 27,
+      minValue:        range.min,
+      maxValue:        range.max,
       power:           this._config.power            ?? 2,
       resolutionScale: this._config.resolution_scale ?? 1.0,
       opacity:         this._config.opacity          ?? 0.7,
@@ -461,6 +485,17 @@ class HaHeatmapCardEditor extends LitElement {
     .field { display: grid; gap: 4px; }
     label { color: var(--secondary-text-color); font-size: 12px; }
     input {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px;
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      background: var(--card-background-color, #fff);
+      color: var(--primary-text-color, #111);
+      font: inherit;
+      box-sizing: border-box;
+    }
+    select {
       width: 100%;
       min-height: 40px;
       padding: 8px;
@@ -554,9 +589,22 @@ class HaHeatmapCardEditor extends LitElement {
 
       <div class="section">
         <h3>Heatmap settings</h3>
+        <div class="field">
+          <label>Temperature scale</label>
+          <select .value=${this._config.temperature_scale ?? 'fixed'} @change=${this._setScaleMode}>
+            <option value="fixed">Fixed range</option>
+            <option value="auto">Automatic range from current sensors</option>
+          </select>
+        </div>
         <div class="grid">
           ${this._numberField('Minimum value', 'min_value', 18, 0.1)}
           ${this._numberField('Maximum value', 'max_value', 27, 0.1)}
+          ${this._config.temperature_scale === 'auto' ? html`
+            ${this._numberField('Scale padding', 'scale_padding', 2, 0.1, 0)}
+            ${this._numberField('Minimum scale span', 'min_span', 6, 0.1, 0)}
+            ${this._optionalNumberField('Clamp minimum (optional)', 'clamp_min', 0.1)}
+            ${this._optionalNumberField('Clamp maximum (optional)', 'clamp_max', 0.1)}
+          ` : ''}
           ${this._numberField('IDW power', 'power', 2, 0.1)}
           ${this._numberField('Resolution scale', 'resolution_scale', 1, 0.05, 0.05, 1)}
           ${this._numberField('Opacity', 'opacity', 0.7, 0.05, 0, 1)}
@@ -572,7 +620,7 @@ class HaHeatmapCardEditor extends LitElement {
 
   private _numberField(
     label: string,
-    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
     defaultValue: number,
     step: number,
     min?: number,
@@ -593,20 +641,48 @@ class HaHeatmapCardEditor extends LitElement {
     `;
   }
 
+  private _optionalNumberField(
+    label: string,
+    key: 'clamp_min' | 'clamp_max',
+    step: number,
+  ) {
+    return html`
+      <div class="field">
+        <label>${label}</label>
+        <input
+          type="number"
+          .value=${this._config[key] === undefined ? '' : String(this._config[key])}
+          placeholder="No limit"
+          step=${step}
+          @input=${(event: Event) => this._setOptionalNumber(key, event)}
+        />
+      </div>
+    `;
+  }
+
   private _setText(key: 'background_image', event: Event): void {
     this._updateConfig({ [key]: (event.target as HTMLInputElement).value });
   }
 
   private _setNumber(
-    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
     event: Event,
   ): void {
     const value = Number((event.target as HTMLInputElement).value);
     if (!Number.isNaN(value)) this._updateConfig({ [key]: value });
   }
 
+  private _setOptionalNumber(key: 'clamp_min' | 'clamp_max', event: Event): void {
+    const raw = (event.target as HTMLInputElement).value;
+    this._updateConfig({ [key]: raw === '' ? undefined : Number(raw) });
+  }
+
   private _setEditMode = (event: Event): void => {
     this._updateConfig({ edit_mode: (event.target as HTMLInputElement).checked });
+  };
+
+  private _setScaleMode = (event: Event): void => {
+    this._updateConfig({ temperature_scale: (event.target as HTMLSelectElement).value as TemperatureScaleMode });
   };
 
   private _addEntity = (): void => {

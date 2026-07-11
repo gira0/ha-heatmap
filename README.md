@@ -39,8 +39,11 @@ If no floorplan image is configured, the card displays a bundled sample floorpla
 ```yaml
 type: custom:ha-heatmap-card
 background_image: /local/floorplan.png
-min_value: 18
-max_value: 27
+temperature_scale: auto
+scale_padding: 2
+min_span: 6
+clamp_min: 15
+clamp_max: 35
 power: 2
 resolution_scale: 0.5
 opacity: 0.7
@@ -65,8 +68,13 @@ entities:
 | `entities[].entity_id` | `string` | yes | HA entity ID of a temperature sensor. |
 | `entities[].x` | `float` | yes | Normalised horizontal position on the image (0.0 – 1.0). |
 | `entities[].y` | `float` | yes | Normalised vertical position on the image (0.0 – 1.0). |
+| `temperature_scale` | `fixed` / `auto` | no | `fixed` uses `min_value` / `max_value` (default). `auto` adapts the range to current valid sensors. |
 | `min_value` | `float` | no | Value mapped to the cold end of the gradient (default `18`). |
 | `max_value` | `float` | no | Value mapped to the hot end of the gradient (default `27`). |
+| `scale_padding` | `float` | no | In auto mode, degrees added below and above the current sensor range (default `2`). |
+| `min_span` | `float` | no | In auto mode, minimum total range in degrees to prevent exaggerated contrast (default `6`). |
+| `clamp_min` | `float` | no | Optional lower safety limit for an automatic range. |
+| `clamp_max` | `float` | no | Optional upper safety limit for an automatic range. |
 | `power` | `float` | no | IDW distance-decay exponent (default `2`). Higher values create sharper transitions around sensors. |
 | `resolution_scale` | `float` | no | Downsample factor for the heatmap grid (default `1.0`). Lower values improve performance at the cost of resolution. |
 | `opacity` | `float` | no | Heatmap overlay opacity from `0.0` (transparent) to `1.0` (opaque), default `0.7`. |
@@ -74,6 +82,12 @@ entities:
 | `edit_mode` | `boolean` | no | Show draggable calibration targets and a button to copy the updated YAML (default `false`). |
 
 Each configured sensor is shown as a white circular marker labelled with its current numeric value.
+
+### Automatic temperature scale
+
+For a relative view of the warmest and coolest rooms, set `temperature_scale: auto`. The card calculates its colour range from the current valid sensor readings, adds `scale_padding`, then enforces `min_span`. For example, readings from $26.9^\circ$ to $28.6^\circ$ with the defaults yield an active range of $24.75^\circ$ to $30.75^\circ$.
+
+Use `clamp_min` and `clamp_max` to prevent implausible sensor readings from expanding the scale too far. Keep `temperature_scale: fixed` when colours should always represent absolute temperature thresholds.
 
 ### Position calibration
 
