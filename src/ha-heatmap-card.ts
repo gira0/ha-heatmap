@@ -187,10 +187,11 @@ class HaHeatmapCard extends LitElement {
     // canvas pixels so markers remain a consistent visible size.
     const markerSize = Math.max(8, Math.min(48, this._config?.marker_size ?? 16));
     const canvasScale = width / (displayWidth || width);
-    const radius = markerSize * canvasScale;
+    const minimumRadius = markerSize * canvasScale;
 
     ctx.save();
-    ctx.font = `bold ${Math.round(radius * 0.8)}px sans-serif`;
+    const fontSize = Math.round(minimumRadius * 0.8);
+    ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -198,6 +199,10 @@ class HaHeatmapCard extends LitElement {
       const cx = x * width;
       const cy = y * height;
       const label = `${Number.isInteger(value) ? value : value.toFixed(1)}°`;
+      // Decimal values such as "28.2°" are wider than integer labels. Give
+      // every label horizontal padding and grow its circle when necessary.
+      const labelWidth = ctx.measureText(label).width;
+      const radius = Math.max(minimumRadius, labelWidth / 2 + fontSize * 0.45);
 
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);

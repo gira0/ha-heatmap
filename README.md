@@ -56,7 +56,7 @@ entities:
 | `power` | `float` | no | IDW distance-decay exponent (default `2`). Higher values create sharper transitions around sensors. |
 | `resolution_scale` | `float` | no | Downsample factor for the heatmap grid (default `1.0`). Lower values improve performance at the cost of resolution. |
 | `opacity` | `float` | no | Heatmap overlay opacity from `0.0` (transparent) to `1.0` (opaque), default `0.7`. |
-| `marker_size` | `float` | no | Radius of each sensor marker in displayed pixels (default `16`, allowed range `8`–`48`). |
+| `marker_size` | `float` | no | Minimum radius of each sensor marker in displayed pixels (default `16`, allowed range `8`–`48`). Markers automatically grow to fit decimal values. |
 
 Each configured sensor is shown as a white circular marker labelled with its current numeric value.
 
