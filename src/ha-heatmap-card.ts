@@ -34,6 +34,10 @@ interface CardConfig {
   edit_mode?: boolean;
 }
 
+interface ConfigChangedEventDetail {
+  config: CardConfig;
+}
+
 // ---------------------------------------------------------------------------
 // Card implementation
 // ---------------------------------------------------------------------------
@@ -138,15 +142,25 @@ class HaHeatmapCard extends LitElement {
     }
   `;
 
+  static getConfigElement(): HTMLElement {
+    return document.createElement('ha-heatmap-card-editor');
+  }
+
+  static getStubConfig(): CardConfig {
+    return {
+      background_image: '',
+      entities: [],
+    };
+  }
+
   setConfig(config: CardConfig): void {
-    if (!config.background_image) {
-      throw new Error('ha-heatmap-card: background_image is required');
-    }
-    if (!Array.isArray(config.entities) || config.entities.length === 0) {
-      throw new Error('ha-heatmap-card: at least one entity is required');
+    // New cards can start as incomplete drafts in Home Assistant's visual
+    // editor. Rendering simply remains empty until an image and entities are
+    // selected, instead of preventing the editor from being used.
+    if (!Array.isArray(config.entities)) {
+      throw new Error('ha-heatmap-card: entities must be a list');
     }
     for (const e of config.entities) {
-      if (!e.entity_id) throw new Error('ha-heatmap-card: each entity needs an entity_id');
       if (typeof e.x !== 'number' || typeof e.y !== 'number') {
         throw new Error(`ha-heatmap-card: entity ${e.entity_id} needs numeric x and y`);
       }
@@ -408,7 +422,220 @@ class HaHeatmapCard extends LitElement {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Home Assistant visual card editor
+// ---------------------------------------------------------------------------
+
+class HaHeatmapCardEditor extends LitElement {
+  private _config: CardConfig = HaHeatmapCard.getStubConfig();
+  private _hass: Hass | null = null;
+
+  static override styles = css`
+    :host { display: block; }
+    .section { margin: 20px 0; }
+    h3 { margin: 0 0 12px; font-size: 16px; }
+    .help { margin: -6px 0 12px; color: var(--secondary-text-color); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .sensor-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 76px 76px 38px;
+      gap: 8px;
+      align-items: end;
+      margin: 8px 0;
+    }
+    .field { display: grid; gap: 4px; }
+    label { color: var(--secondary-text-color); font-size: 12px; }
+    input {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px;
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      background: var(--card-background-color, #fff);
+      color: var(--primary-text-color, #111);
+      font: inherit;
+      box-sizing: border-box;
+    }
+    ha-entity-picker { min-width: 0; }
+    button {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 4px;
+      background: var(--primary-color, #03a9f4);
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+    .remove {
+      width: 36px;
+      padding: 0;
+      background: transparent;
+      color: var(--error-color, #db4437);
+      font-size: 24px;
+      line-height: 1;
+    }
+    .toggle { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+    .toggle input { width: 18px; min-height: auto; }
+    @media (max-width: 500px) {
+      .grid { grid-template-columns: 1fr; }
+      .sensor-row { grid-template-columns: minmax(0, 1fr) 62px 62px 38px; }
+    }
+  `;
+
+  setConfig(config: CardConfig): void {
+    this._config = this._cloneConfig(config);
+    this.requestUpdate();
+  }
+
+  set hass(hass: Hass) {
+    this._hass = hass;
+    this.requestUpdate();
+  }
+
+  override render() {
+    return html`
+      <div class="section">
+        <h3>Floorplan</h3>
+        <div class="field">
+          <label for="background-image">Image URL or Home Assistant /local/ path</label>
+          <input
+            id="background-image"
+            .value=${this._config.background_image}
+            placeholder="/local/images/floorplan.png"
+            @input=${(event: Event) => this._setText('background_image', event)}
+          />
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Temperature sensors</h3>
+        <p class="help">Search for a sensor, then use the coordinates or Calibration Mode to place it.</p>
+        ${this._config.entities.map((entity, index) => html`
+          <div class="sensor-row">
+            <div class="field">
+              <label>Temperature sensor</label>
+              <ha-entity-picker
+                .hass=${this._hass}
+                .value=${entity.entity_id}
+                .includeDomains=${['sensor']}
+                allow-custom-entity
+                @value-changed=${(event: CustomEvent<{ value: string }>) => this._setEntityId(index, event)}
+              ></ha-entity-picker>
+            </div>
+            <div class="field">
+              <label>X</label>
+              <input type="number" min="0" max="1" step="0.0001" .value=${String(entity.x)} @input=${(event: Event) => this._setCoordinate(index, 'x', event)} />
+            </div>
+            <div class="field">
+              <label>Y</label>
+              <input type="number" min="0" max="1" step="0.0001" .value=${String(entity.y)} @input=${(event: Event) => this._setCoordinate(index, 'y', event)} />
+            </div>
+            <button class="remove" title="Remove sensor" aria-label="Remove sensor" @click=${() => this._removeEntity(index)}>×</button>
+          </div>
+        `)}
+        <button @click=${this._addEntity}>Add temperature sensor</button>
+      </div>
+
+      <div class="section">
+        <h3>Heatmap settings</h3>
+        <div class="grid">
+          ${this._numberField('Minimum value', 'min_value', 18, 0.1)}
+          ${this._numberField('Maximum value', 'max_value', 27, 0.1)}
+          ${this._numberField('IDW power', 'power', 2, 0.1)}
+          ${this._numberField('Resolution scale', 'resolution_scale', 1, 0.05, 0.05, 1)}
+          ${this._numberField('Opacity', 'opacity', 0.7, 0.05, 0, 1)}
+          ${this._numberField('Marker size', 'marker_size', 16, 1, 8, 48)}
+        </div>
+        <label class="toggle">
+          <input type="checkbox" .checked=${this._config.edit_mode === true} @change=${this._setEditMode} />
+          Enable Calibration Mode (drag sensor targets on the floorplan)
+        </label>
+      </div>
+    `;
+  }
+
+  private _numberField(
+    label: string,
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    defaultValue: number,
+    step: number,
+    min?: number,
+    max?: number,
+  ) {
+    return html`
+      <div class="field">
+        <label>${label}</label>
+        <input
+          type="number"
+          .value=${String(this._config[key] ?? defaultValue)}
+          step=${step}
+          min=${min ?? ''}
+          max=${max ?? ''}
+          @input=${(event: Event) => this._setNumber(key, event)}
+        />
+      </div>
+    `;
+  }
+
+  private _setText(key: 'background_image', event: Event): void {
+    this._updateConfig({ [key]: (event.target as HTMLInputElement).value });
+  }
+
+  private _setNumber(
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    event: Event,
+  ): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    if (!Number.isNaN(value)) this._updateConfig({ [key]: value });
+  }
+
+  private _setEditMode = (event: Event): void => {
+    this._updateConfig({ edit_mode: (event.target as HTMLInputElement).checked });
+  };
+
+  private _addEntity = (): void => {
+    this._updateConfig({
+      entities: [...this._config.entities, { entity_id: '', x: 0.5, y: 0.5 }],
+    });
+  };
+
+  private _removeEntity(index: number): void {
+    this._updateConfig({ entities: this._config.entities.filter((_, itemIndex) => itemIndex !== index) });
+  }
+
+  private _setEntityId(index: number, event: CustomEvent<{ value: string }>): void {
+    this._updateEntity(index, { entity_id: event.detail.value });
+  }
+
+  private _setCoordinate(index: number, key: 'x' | 'y', event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    if (!Number.isNaN(value)) this._updateEntity(index, { [key]: Math.max(0, Math.min(1, value)) });
+  }
+
+  private _updateEntity(index: number, change: Partial<EntityConfig>): void {
+    this._updateConfig({
+      entities: this._config.entities.map((entity, itemIndex) => itemIndex === index ? { ...entity, ...change } : entity),
+    });
+  }
+
+  private _updateConfig(change: Partial<CardConfig>): void {
+    this._config = this._cloneConfig({ ...this._config, ...change });
+    this.dispatchEvent(new CustomEvent<ConfigChangedEventDetail>('config-changed', {
+      detail: { config: this._cloneConfig(this._config) },
+      bubbles: true,
+      composed: true,
+    }));
+    this.requestUpdate();
+  }
+
+  private _cloneConfig(config: CardConfig): CardConfig {
+    return { ...config, entities: (config.entities ?? []).map((entity) => ({ ...entity })) };
+  }
+}
+
 customElements.define('ha-heatmap-card', HaHeatmapCard);
+customElements.define('ha-heatmap-card-editor', HaHeatmapCardEditor);
 
 // Required by the Lovelace card picker
 (window as unknown as Record<string, unknown>)['customCards'] ??= [];
