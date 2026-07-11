@@ -168,6 +168,41 @@ class HaHeatmapCard extends LitElement {
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
+    this._drawSensorMarkers(ctx, points, width, height);
+  }
+
+  private _drawSensorMarkers(
+    ctx: CanvasRenderingContext2D,
+    points: readonly SensorPoint[],
+    width: number,
+    height: number,
+  ): void {
+    // Scale labels with the image's intrinsic dimensions so they remain
+    // legible when the floorplan is displayed at different card sizes.
+    const radius = Math.max(14, Math.min(40, Math.min(width, height) * 0.025));
+
+    ctx.save();
+    ctx.font = `bold ${Math.round(radius * 0.8)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const { x, y, value } of points) {
+      const cx = x * width;
+      const cy = y * height;
+      const label = `${Number.isInteger(value) ? value : value.toFixed(1)}°`;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.fill();
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = Math.max(1.5, radius * 0.1);
+      ctx.stroke();
+      ctx.fillStyle = '#111827';
+      ctx.fillText(label, cx, cy);
+    }
+
+    ctx.restore();
   }
 }
 

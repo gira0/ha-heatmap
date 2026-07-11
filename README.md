@@ -57,6 +57,8 @@ entities:
 | `resolution_scale` | `float` | no | Downsample factor for the heatmap grid (default `1.0`). Lower values improve performance at the cost of resolution. |
 | `opacity` | `float` | no | Heatmap overlay opacity from `0.0` (transparent) to `1.0` (opaque), default `0.7`. |
 
+Each configured sensor is shown as a white circular marker labelled with its current numeric value.
+
 ## Color Scale
 
 The heatmap uses this fixed RGB gradient:
