@@ -32,7 +32,7 @@ Render IDW (Inverse Distance Weighting) heatmaps over a floorplan image. Sensor 
 
 ### Visual editor
 
-Use the dashboard's **Edit card** action to configure the card without writing YAML. The visual editor lets you search and add `sensor` entities, set their initial coordinates, remove sensors, and change the heatmap settings. Enable **Calibration Mode** there to drag targets directly over the floorplan, then use **Copy YAML** to preserve the calibrated coordinates.
+Use the dashboard's **Edit card** action to configure the card without writing YAML. The visual editor lets you search and add `sensor` entities, set their initial coordinates, remove sensors, distribute multiple new sensors across the floorplan, and change the heatmap settings. Enable **Calibration Mode** there to drag targets directly over the floorplan, then use **Copy YAML** to preserve the calibrated coordinates.
 
 If no floorplan image is configured, the card displays a bundled sample floorplan. It is intended as an editor placeholder; set `background_image` to use your own image.
 
@@ -82,9 +82,15 @@ entities:
 | `opacity` | `float` | no | Heatmap overlay opacity from `0.0` (transparent) to `1.0` (opaque), default `0.7`. |
 | `marker_size` | `float` | no | Minimum radius of each sensor marker in displayed pixels (default `16`, allowed range `8`–`48`). Markers automatically grow to fit decimal values. |
 | `marker_shape` | `box` / `circle` | no | Marker style. `box` is the default and expands naturally for the label; `circle` keeps the original circular marker. |
+| `marker_show_name` | `boolean` | no | Show the Home Assistant friendly name above the temperature in a marker (default `false`). |
+| `marker_color_swatch` | `boolean` | no | Show a small heatmap-colour swatch in boxed markers (default `false`). |
+| `show_legend` | `boolean` | no | Show the active low/high temperature legend on the card (default `true`). |
+| `scale_lock` | `boolean` | no | Freeze the current automatic or percentile range until unlocked (default `false`). |
 | `edit_mode` | `boolean` | no | Show draggable calibration targets and a button to copy the updated YAML (default `false`). |
 
 Each configured sensor is shown as a white boxed marker labelled with its current numeric value. Set `marker_shape: circle` to use round markers instead.
+
+The compact legend in the lower-right corner shows the active colour range. When using an automatic scale, enable `scale_lock` to hold the current range steady while temperatures change.
 
 ### Automatic temperature scale
 
@@ -123,6 +129,10 @@ The heatmap uses this fixed RGB gradient:
 | Maximum | Red `[255, 0, 0]` |
 
 Values outside this range are clamped to the nearest endpoint.
+
+## Performance and compatibility
+
+Large heatmap grids are calculated in a dedicated browser Worker when supported, keeping IDW calculation off the dashboard's main thread. Smaller grids render directly to avoid Worker setup overhead. Browsers without Worker or `OffscreenCanvas` support automatically use the compatible in-page canvas renderer.
 
 ## Disclaimer
 

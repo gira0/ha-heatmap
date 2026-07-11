@@ -81,10 +81,8 @@ function drawScenario(canvas: HTMLCanvasElement, scenario: Scenario): void {
   };
 
   const offscreen = renderHeatmap(config);
-  const bitmap = offscreen.transferToImageBitmap();
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
+  ctx.drawImage(offscreen, 0, 0);
 
   // Sensor dots with temperature labels
   ctx.font = 'bold 11px monospace';

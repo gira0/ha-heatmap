@@ -1,7 +1,9 @@
 import { LitElement, html, css } from 'lit';
-import { renderHeatmap } from './renderer';
+import { renderHeatmapAsync } from './renderer';
+import { valueToColor } from './color';
 import type { SensorPoint } from './types';
 import { resolveTemperatureRange, type TemperatureScaleMode } from './temperature-scale';
+import type { TemperatureRange } from './temperature-scale';
 
 /** A bundled placeholder so a newly added card is useful before configuration. */
 const DEFAULT_FLOORPLAN_SVG = `data:image/svg+xml,${encodeURIComponent(`
@@ -37,6 +39,11 @@ interface EntityConfig {
   y: number;
 }
 
+interface MarkerPoint extends SensorPoint {
+  entityId: string;
+  name: string;
+}
+
 type MarkerShape = 'box' | 'circle';
 
 interface CardConfig {
@@ -51,11 +58,15 @@ interface CardConfig {
   upper_percentile?: number;
   clamp_min?: number;
   clamp_max?: number;
+  scale_lock?: boolean;
+  show_legend?: boolean;
   power?: number;
   resolution_scale?: number;
   opacity?: number;
   marker_size?: number;
   marker_shape?: MarkerShape;
+  marker_show_name?: boolean;
+  marker_color_swatch?: boolean;
   /** Show draggable calibration targets and a Copy YAML control. */
   edit_mode?: boolean;
 }
@@ -77,6 +88,9 @@ class HaHeatmapCard extends LitElement {
   private _copyStatus = '';
   private _draggingIndex: number | null = null;
   private _activeDragTarget: HTMLElement | null = null;
+  private _activeRange: TemperatureRange | null = null;
+  private _lockedRange: TemperatureRange | null = null;
+  private _renderVersion = 0;
 
   static override styles = css`
     :host {
@@ -166,6 +180,22 @@ class HaHeatmapCard extends LitElement {
       cursor: pointer;
       font: inherit;
     }
+    .legend {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      z-index: 1;
+      min-width: 130px;
+      padding: 6px 8px;
+      border-radius: 5px;
+      background: rgba(17, 24, 39, 0.82);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1.2;
+      pointer-events: none;
+    }
+    .legend-bar { height: 7px; margin: 4px 0; border-radius: 4px; background: linear-gradient(90deg, #00f 0%, #0ff 25%, #0f0 40%, #ff0 65%, #f00 100%); }
+    .legend-labels { display: flex; justify-content: space-between; }
   `;
 
   static getConfigElement(): HTMLElement {
@@ -210,6 +240,7 @@ class HaHeatmapCard extends LitElement {
       entities: config.entities.map((entity) => ({ ...entity })),
     };
     this._lastStates = {};
+    this._lockedRange = null;
     this._imageLoaded = false;
     this.requestUpdate();
   }
@@ -249,6 +280,13 @@ class HaHeatmapCard extends LitElement {
           @error=${this._onImageError}
         />
         <canvas></canvas>
+        ${this._config.show_legend !== false && this._activeRange ? html`
+          <div class="legend" aria-label="Active temperature range">
+            <div>Active range${this._config.scale_lock ? ' (locked)' : ''}</div>
+            <div class="legend-bar"></div>
+            <div class="legend-labels"><span>${this._formatTemperature(this._activeRange.min)}</span><span>${this._formatTemperature(this._activeRange.max)}</span></div>
+          </div>
+        ` : ''}
         ${isEditing ? this._config.entities.map((entity, index) => html`
           <button
             class="calibration-target"
@@ -262,6 +300,7 @@ class HaHeatmapCard extends LitElement {
       ${isEditing ? html`
         <div class="calibration-panel">
           <span>Drag each blue target to its sensor, then copy the updated YAML.</span>
+          ${this._activeRange ? html`<span>${this._formatTemperature(this._activeRange.min)}–${this._formatTemperature(this._activeRange.max)}</span>` : ''}
           <button @click=${this._copyYaml}>${this._copyStatus || 'Copy YAML'}</button>
         </div>
       ` : ''}
@@ -345,11 +384,15 @@ class HaHeatmapCard extends LitElement {
       ['upper_percentile', config.upper_percentile],
       ['clamp_min', config.clamp_min],
       ['clamp_max', config.clamp_max],
+      ['scale_lock', config.scale_lock],
+      ['show_legend', config.show_legend],
       ['power', config.power],
       ['resolution_scale', config.resolution_scale],
       ['opacity', config.opacity],
       ['marker_size', config.marker_size],
       ['marker_shape', config.marker_shape],
+      ['marker_show_name', config.marker_show_name],
+      ['marker_color_swatch', config.marker_color_swatch],
     ].filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}: ${value}`);
 
@@ -375,7 +418,8 @@ class HaHeatmapCard extends LitElement {
     console.error('ha-heatmap-card: failed to load background image', this._config?.background_image);
   }
 
-  private _redraw(): void {
+  private async _redraw(): Promise<void> {
+    const renderVersion = ++this._renderVersion;
     if (!this._config || !this._hass) return;
 
     const img = this.shadowRoot?.querySelector('img');
@@ -389,17 +433,21 @@ class HaHeatmapCard extends LitElement {
     canvas.width = width;
     canvas.height = height;
 
-    const points: SensorPoint[] = [];
+    const points: MarkerPoint[] = [];
     for (const { entity_id, x, y } of this._config.entities) {
       const raw = this._hass.states[entity_id]?.state;
       const value = parseFloat(raw);
       if (isNaN(value)) continue;
-      points.push({ x, y, value });
+      const entity = this._hass.states[entity_id];
+      const name = typeof entity?.attributes.friendly_name === 'string'
+        ? entity.attributes.friendly_name
+        : entity_id.replace(/^sensor\./, '');
+      points.push({ x, y, value, entityId: entity_id, name });
     }
 
     if (points.length === 0) return;
 
-    const range = resolveTemperatureRange(points.map((point) => point.value), {
+    const calculatedRange = resolveTemperatureRange(points.map((point) => point.value), {
       mode: this._config.temperature_scale ?? 'fixed',
       minValue: this._config.min_value ?? 18,
       maxValue: this._config.max_value ?? 27,
@@ -410,8 +458,16 @@ class HaHeatmapCard extends LitElement {
       clampMin: this._config.clamp_min,
       clampMax: this._config.clamp_max,
     });
+    const adaptiveScale = this._config.temperature_scale === 'auto' || this._config.temperature_scale === 'percentile';
+    if (!adaptiveScale || !this._config.scale_lock) this._lockedRange = null;
+    if (adaptiveScale && this._config.scale_lock && !this._lockedRange) this._lockedRange = calculatedRange;
+    const range = this._lockedRange ?? calculatedRange;
+    if (!this._activeRange || this._activeRange.min !== range.min || this._activeRange.max !== range.max) {
+      this._activeRange = range;
+      this.requestUpdate();
+    }
 
-    const offscreen = renderHeatmap({
+    const offscreen = await renderHeatmapAsync({
       width,
       height,
       points,
@@ -422,26 +478,31 @@ class HaHeatmapCard extends LitElement {
       opacity:         this._config.opacity          ?? 0.7,
     });
 
-    const bitmap = offscreen.transferToImageBitmap();
+    // A newer HA state update may have completed while a Worker was producing
+    // this frame. Only paint the newest requested heatmap.
+    if (renderVersion !== this._renderVersion) return;
+
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    this._drawSensorMarkers(ctx, points, width, height, img.clientWidth);
+    ctx.drawImage(offscreen, 0, 0);
+    this._drawSensorMarkers(ctx, points, width, height, img.clientWidth, range);
   }
 
   private _drawSensorMarkers(
     ctx: CanvasRenderingContext2D,
-    points: readonly SensorPoint[],
+    points: readonly MarkerPoint[],
     width: number,
     height: number,
     displayWidth: number,
+    range: TemperatureRange,
   ): void {
     // Canvas pixels use the image's intrinsic dimensions, while the image is
     // displayed at a CSS width. Convert a desired displayed-pixel radius to
     // canvas pixels so markers remain a consistent visible size.
     const markerSize = Math.max(8, Math.min(48, this._config?.marker_size ?? 16));
     const markerShape = this._config?.marker_shape ?? 'box';
+    const showName = this._config?.marker_show_name === true;
+    const showSwatch = this._config?.marker_color_swatch === true;
     const canvasScale = width / (displayWidth || width);
     const minimumRadius = markerSize * canvasScale;
 
@@ -451,13 +512,15 @@ class HaHeatmapCard extends LitElement {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    for (const { x, y, value } of points) {
+    for (const { x, y, value, name } of points) {
       const cx = x * width;
       const cy = y * height;
-      const label = `${Number.isInteger(value) ? value : value.toFixed(1)}°`;
+      const valueLabel = `${Number.isInteger(value) ? value : value.toFixed(1)}°`;
+      const label = showName ? `${name}\n${valueLabel}` : valueLabel;
       // Decimal values such as "28.2°" are wider than integer labels. Give
       // every label horizontal padding and grow its circle when necessary.
-      const labelWidth = ctx.measureText(label).width;
+      const lines = label.split('\n');
+      const labelWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
       const horizontalPadding = fontSize * 0.65;
       const verticalPadding = fontSize * 0.45;
       const radius = Math.max(minimumRadius, labelWidth / 2 + fontSize * 0.45);
@@ -466,8 +529,9 @@ class HaHeatmapCard extends LitElement {
       if (markerShape === 'circle') {
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       } else {
-        const markerWidth = Math.max(minimumRadius * 2, labelWidth + horizontalPadding * 2);
-        const markerHeight = Math.max(minimumRadius * 2, fontSize + verticalPadding * 2);
+        const swatchSize = showSwatch ? fontSize * 0.7 : 0;
+        const markerWidth = Math.max(minimumRadius * 2, labelWidth + horizontalPadding * 2 + swatchSize);
+        const markerHeight = Math.max(minimumRadius * 2, fontSize * lines.length + verticalPadding * 2);
         this._roundedRect(ctx, cx - markerWidth / 2, cy - markerHeight / 2, markerWidth, markerHeight, fontSize * 0.35);
       }
       ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
@@ -475,8 +539,19 @@ class HaHeatmapCard extends LitElement {
       ctx.strokeStyle = '#1f2937';
       ctx.lineWidth = Math.max(1.5, minimumRadius * 0.1);
       ctx.stroke();
+      let textX = cx;
+      if (showSwatch && markerShape === 'box') {
+        const swatchSize = fontSize * 0.7;
+        const [r, g, b] = valueToColor(value, range.min, range.max);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(cx - labelWidth / 2 - horizontalPadding, cy - swatchSize / 2, swatchSize, swatchSize);
+        ctx.strokeStyle = '#1f2937';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - labelWidth / 2 - horizontalPadding, cy - swatchSize / 2, swatchSize, swatchSize);
+        textX += swatchSize / 2;
+      }
       ctx.fillStyle = '#111827';
-      ctx.fillText(label, cx, cy);
+      lines.forEach((line, index) => ctx.fillText(line, textX, cy + (index - (lines.length - 1) / 2) * fontSize));
     }
 
     ctx.restore();
@@ -501,6 +576,10 @@ class HaHeatmapCard extends LitElement {
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
+  }
+
+  private _formatTemperature(value: number): string {
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}°`;
   }
 }
 
@@ -628,6 +707,7 @@ class HaHeatmapCardEditor extends LitElement {
           </div>
         `)}
         <button @click=${this._addEntity}>Add temperature sensor</button>
+        ${this._config.entities.length > 1 ? html`<button @click=${this._distributeEntities}>Distribute sensors</button>` : ''}
       </div>
 
       <div class="section">
@@ -669,6 +749,24 @@ class HaHeatmapCardEditor extends LitElement {
           <input type="checkbox" .checked=${this._config.edit_mode === true} @change=${this._setEditMode} />
           Enable Calibration Mode (drag sensor targets on the floorplan)
         </label>
+        <label class="toggle">
+          <input type="checkbox" .checked=${this._config.marker_show_name === true} @change=${this._setMarkerNames} />
+          Show sensor friendly name on markers
+        </label>
+        <label class="toggle">
+          <input type="checkbox" .checked=${this._config.marker_color_swatch === true} @change=${this._setMarkerSwatch} />
+          Show heatmap-colour swatch on boxed markers
+        </label>
+        <label class="toggle">
+          <input type="checkbox" .checked=${this._config.show_legend !== false} @change=${this._setLegend} />
+          Show active temperature range legend
+        </label>
+        ${this._config.temperature_scale === 'auto' || this._config.temperature_scale === 'percentile' ? html`
+          <label class="toggle">
+            <input type="checkbox" .checked=${this._config.scale_lock === true} @change=${this._setScaleLock} />
+            Lock the current automatic range
+          </label>
+        ` : ''}
       </div>
     `;
   }
@@ -736,6 +834,22 @@ class HaHeatmapCardEditor extends LitElement {
     this._updateConfig({ edit_mode: (event.target as HTMLInputElement).checked });
   };
 
+  private _setLegend = (event: Event): void => {
+    this._updateConfig({ show_legend: (event.target as HTMLInputElement).checked });
+  };
+
+  private _setMarkerNames = (event: Event): void => {
+    this._updateConfig({ marker_show_name: (event.target as HTMLInputElement).checked });
+  };
+
+  private _setMarkerSwatch = (event: Event): void => {
+    this._updateConfig({ marker_color_swatch: (event.target as HTMLInputElement).checked });
+  };
+
+  private _setScaleLock = (event: Event): void => {
+    this._updateConfig({ scale_lock: (event.target as HTMLInputElement).checked });
+  };
+
   private _setScaleMode = (event: Event): void => {
     this._updateConfig({ temperature_scale: (event.target as HTMLSelectElement).value as TemperatureScaleMode });
   };
@@ -753,6 +867,19 @@ class HaHeatmapCardEditor extends LitElement {
   private _removeEntity(index: number): void {
     this._updateConfig({ entities: this._config.entities.filter((_, itemIndex) => itemIndex !== index) });
   }
+
+  private _distributeEntities = (): void => {
+    const count = this._config.entities.length;
+    const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
+    this._updateConfig({
+      entities: this._config.entities.map((entity, index) => ({
+        ...entity,
+        x: Number((((index % columns) + 1) / (columns + 1)).toFixed(4)),
+        y: Number(((Math.floor(index / columns) + 1) / (rows + 1)).toFixed(4)),
+      })),
+    });
+  };
 
   private _setEntityId(index: number, event: CustomEvent<{ value: string }>): void {
     this._updateEntity(index, { entity_id: event.detail.value });
