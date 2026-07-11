@@ -30,6 +30,8 @@ interface CardConfig {
   resolution_scale?: number;
   opacity?: number;
   marker_size?: number;
+  /** Show draggable calibration targets and a Copy YAML control. */
+  edit_mode?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,7 @@ class HaHeatmapCard extends LitElement {
   /** Last-seen state string per entity_id, for delta checking */
   private _lastStates: Record<string, string> = {};
   private _imageLoaded = false;
+  private _copyStatus = '';
 
   static override styles = css`
     :host {
@@ -66,6 +69,53 @@ class HaHeatmapCard extends LitElement {
       height: 100%;
       pointer-events: none;
     }
+    .calibration-target {
+      position: absolute;
+      z-index: 1;
+      width: 34px;
+      height: 34px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      background: #2563eb;
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+      color: #ffffff;
+      cursor: grab;
+      touch-action: none;
+      transform: translate(-50%, -50%);
+    }
+    .calibration-target:active { cursor: grabbing; }
+    .calibration-target::before,
+    .calibration-target::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: #ffffff;
+      content: '';
+      transform: translate(-50%, -50%);
+    }
+    .calibration-target::before { width: 18px; height: 2px; }
+    .calibration-target::after { width: 2px; height: 18px; }
+    .calibration-panel {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--secondary-background-color, #f5f5f5);
+      color: var(--primary-text-color, #212121);
+      font-size: 13px;
+      line-height: 1.3;
+    }
+    .calibration-panel button {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      border: 0;
+      border-radius: 4px;
+      background: var(--primary-color, #03a9f4);
+      color: #ffffff;
+      cursor: pointer;
+      font: inherit;
+    }
   `;
 
   setConfig(config: CardConfig): void {
@@ -83,6 +133,9 @@ class HaHeatmapCard extends LitElement {
     }
     if (config.marker_size !== undefined && typeof config.marker_size !== 'number') {
       throw new Error('ha-heatmap-card: marker_size must be a number');
+    }
+    if (config.edit_mode !== undefined && typeof config.edit_mode !== 'boolean') {
+      throw new Error('ha-heatmap-card: edit_mode must be true or false');
     }
     this._config = config;
     this._lastStates = {};
@@ -111,6 +164,7 @@ class HaHeatmapCard extends LitElement {
 
   override render() {
     if (!this._config) return html``;
+    const isEditing = this._config.edit_mode === true;
     return html`
       <div class="container">
         <img
@@ -119,8 +173,87 @@ class HaHeatmapCard extends LitElement {
           @error=${this._onImageError}
         />
         <canvas></canvas>
+        ${isEditing ? this._config.entities.map((entity, index) => html`
+          <button
+            class="calibration-target"
+            style="left: ${entity.x * 100}%; top: ${entity.y * 100}%;"
+            title=${`${entity.entity_id}: x ${entity.x.toFixed(3)}, y ${entity.y.toFixed(3)}`}
+            aria-label=${`Drag ${entity.entity_id} to set its floorplan position`}
+            @pointerdown=${(event: PointerEvent) => this._startDrag(event, index)}
+            @pointermove=${(event: PointerEvent) => this._dragTarget(event, index)}
+            @pointerup=${this._finishDrag}
+            @pointercancel=${this._finishDrag}
+          ></button>
+        `) : ''}
       </div>
+      ${isEditing ? html`
+        <div class="calibration-panel">
+          <span>Drag each blue target to its sensor, then copy the updated YAML.</span>
+          <button @click=${this._copyYaml}>${this._copyStatus || 'Copy YAML'}</button>
+        </div>
+      ` : ''}
     `;
+  }
+
+  private _startDrag(event: PointerEvent, index: number): void {
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this._dragTarget(event, index);
+  }
+
+  private _dragTarget(event: PointerEvent, index: number): void {
+    if (!this._config || !(event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) return;
+
+    const container = this.shadowRoot?.querySelector('.container');
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    const entity = this._config.entities[index];
+    entity.x = Number(x.toFixed(4));
+    entity.y = Number(y.toFixed(4));
+    this.requestUpdate();
+    this._redraw();
+  }
+
+  private _finishDrag(event: PointerEvent): void {
+    const target = event.currentTarget as HTMLElement;
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+  }
+
+  private async _copyYaml(): Promise<void> {
+    if (!this._config) return;
+    const yaml = this._toYaml(this._config);
+    try {
+      await navigator.clipboard.writeText(yaml);
+      this._copyStatus = 'Copied!';
+    } catch {
+      this._copyStatus = 'Copy failed';
+    }
+    this.requestUpdate();
+  }
+
+  private _toYaml(config: CardConfig): string {
+    const optional = [
+      ['min_value', config.min_value],
+      ['max_value', config.max_value],
+      ['power', config.power],
+      ['resolution_scale', config.resolution_scale],
+      ['opacity', config.opacity],
+      ['marker_size', config.marker_size],
+    ].filter(([, value]) => value !== undefined)
+      .map(([key, value]) => `${key}: ${value}`);
+
+    return [
+      'type: custom:ha-heatmap-card',
+      `background_image: ${config.background_image}`,
+      ...optional,
+      'entities:',
+      ...config.entities.flatMap(({ entity_id, x, y }) => [
+        `  - entity_id: ${entity_id}`,
+        `    x: ${x}`,
+        `    y: ${y}`,
+      ]),
+    ].join('\n');
   }
 
   private _onImageLoad(): void {

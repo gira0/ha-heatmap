@@ -57,8 +57,25 @@ entities:
 | `resolution_scale` | `float` | no | Downsample factor for the heatmap grid (default `1.0`). Lower values improve performance at the cost of resolution. |
 | `opacity` | `float` | no | Heatmap overlay opacity from `0.0` (transparent) to `1.0` (opaque), default `0.7`. |
 | `marker_size` | `float` | no | Minimum radius of each sensor marker in displayed pixels (default `16`, allowed range `8`–`48`). Markers automatically grow to fit decimal values. |
+| `edit_mode` | `boolean` | no | Show draggable calibration targets and a button to copy the updated YAML (default `false`). |
 
 Each configured sensor is shown as a white circular marker labelled with its current numeric value.
+
+### Position calibration
+
+Set `edit_mode: true` temporarily to show a blue draggable target for every configured sensor. Drag each target to the real sensor location, then select **Copy YAML** and replace the card configuration with the copied result. The card cannot modify Lovelace configuration automatically.
+
+```yaml
+type: custom:ha-heatmap-card
+edit_mode: true
+background_image: /local/floorplan.png
+entities:
+  - entity_id: sensor.living_room_temperature
+    x: 0.30
+    y: 0.55
+```
+
+Remove `edit_mode: true` once the positions are saved to hide the calibration controls.
 
 ## Color Scale
 
