@@ -45,6 +45,7 @@ class HaHeatmapCard extends LitElement {
   private _lastStates: Record<string, string> = {};
   private _imageLoaded = false;
   private _copyStatus = '';
+  private _draggingIndex: number | null = null;
 
   static override styles = css`
     :host {
@@ -162,6 +163,11 @@ class HaHeatmapCard extends LitElement {
     }
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._finishDrag();
+  }
+
   override render() {
     if (!this._config) return html``;
     const isEditing = this._config.edit_mode === true;
@@ -180,9 +186,6 @@ class HaHeatmapCard extends LitElement {
             title=${`${entity.entity_id}: x ${entity.x.toFixed(3)}, y ${entity.y.toFixed(3)}`}
             aria-label=${`Drag ${entity.entity_id} to set its floorplan position`}
             @pointerdown=${(event: PointerEvent) => this._startDrag(event, index)}
-            @pointermove=${(event: PointerEvent) => this._dragTarget(event, index)}
-            @pointerup=${this._finishDrag}
-            @pointercancel=${this._finishDrag}
           ></button>
         `) : ''}
       </div>
@@ -196,12 +199,21 @@ class HaHeatmapCard extends LitElement {
   }
 
   private _startDrag(event: PointerEvent, index: number): void {
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+    this._finishDrag();
+    this._draggingIndex = index;
+    window.addEventListener('pointermove', this._onPointerMove);
+    window.addEventListener('pointerup', this._finishDrag, { once: true });
+    window.addEventListener('pointercancel', this._finishDrag, { once: true });
     this._dragTarget(event, index);
   }
 
+  private _onPointerMove = (event: PointerEvent): void => {
+    if (this._draggingIndex !== null) this._dragTarget(event, this._draggingIndex);
+  };
+
   private _dragTarget(event: PointerEvent, index: number): void {
-    if (!this._config || !(event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) return;
+    if (!this._config) return;
 
     const container = this.shadowRoot?.querySelector('.container');
     if (!container) return;
@@ -215,10 +227,10 @@ class HaHeatmapCard extends LitElement {
     this._redraw();
   }
 
-  private _finishDrag(event: PointerEvent): void {
-    const target = event.currentTarget as HTMLElement;
-    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
-  }
+  private _finishDrag = (): void => {
+    this._draggingIndex = null;
+    window.removeEventListener('pointermove', this._onPointerMove);
+  };
 
   private async _copyYaml(): Promise<void> {
     if (!this._config) return;
