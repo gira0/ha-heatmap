@@ -29,7 +29,7 @@
 
 ## Post-MVP Validation & Release
 
-- [ ] Test the card in a real Home Assistant dashboard
+- [x] Test the card in a real Home Assistant dashboard
 - [ ] Add card-level lifecycle and configuration tests
 - [x] Initialize Git repository and add CI for tests, typecheck, and build
-- [ ] Tag and publish the first HACS release
+- [x] Tag and publish the first HACS release
