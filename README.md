@@ -63,7 +63,7 @@ Each configured sensor is shown as a white circular marker labelled with its cur
 
 ### Position calibration
 
-Set `edit_mode: true` temporarily to show a blue draggable target for every configured sensor. Drag each target to the real sensor location, then select **Copy YAML** and replace the card configuration with the copied result. The card cannot modify Lovelace configuration automatically.
+Set `edit_mode: true` temporarily to show a labelled blue draggable target for every configured sensor. The label uses the Home Assistant friendly name and current value when available. Drag each target to the real sensor location, then select **Copy YAML** and replace the card configuration with the copied result. The card cannot modify Lovelace configuration automatically.
 
 ```yaml
 type: custom:ha-heatmap-card

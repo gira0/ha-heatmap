@@ -97,6 +97,24 @@ class HaHeatmapCard extends LitElement {
     }
     .calibration-target::before { width: 18px; height: 2px; }
     .calibration-target::after { width: 2px; height: 18px; }
+    .calibration-label {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      max-width: 180px;
+      padding: 4px 6px;
+      overflow: hidden;
+      border-radius: 4px;
+      background: rgba(17, 24, 39, 0.9);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transform: translateX(-50%);
+    }
     .calibration-panel {
       display: flex;
       align-items: center;
@@ -192,7 +210,7 @@ class HaHeatmapCard extends LitElement {
             title=${`${entity.entity_id}: x ${entity.x.toFixed(3)}, y ${entity.y.toFixed(3)}`}
             aria-label=${`Drag ${entity.entity_id} to set its floorplan position`}
             @pointerdown=${(event: PointerEvent) => this._startDrag(event, index)}
-          ></button>
+          ><span class="calibration-label">${this._calibrationLabel(entity)}</span></button>
         `) : ''}
       </div>
       ${isEditing ? html`
@@ -213,6 +231,15 @@ class HaHeatmapCard extends LitElement {
     window.addEventListener('pointerup', this._finishDrag, { once: true });
     window.addEventListener('pointercancel', this._finishDrag, { once: true });
     this._dragTarget(event, index);
+  }
+
+  private _calibrationLabel(entity: EntityConfig): string {
+    const state = this._hass?.states[entity.entity_id];
+    const name = typeof state?.attributes.friendly_name === 'string'
+      ? state.attributes.friendly_name
+      : entity.entity_id.replace(/^sensor\./, '');
+    const value = state?.state;
+    return value && !isNaN(Number(value)) ? `${name}: ${value}°` : name;
   }
 
   private _onPointerMove = (event: PointerEvent): void => {
