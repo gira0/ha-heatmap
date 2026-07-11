@@ -73,3 +73,7 @@ The heatmap uses this fixed RGB gradient:
 | Maximum | Red `[255, 0, 0]` |
 
 Values outside this range are clamped to the nearest endpoint.
+
+## Disclaimer
+
+This is a vibe-coded project built with AI assistance. It is provided as an experimental community project; review the code and test it in your own Home Assistant environment before relying on it for important automations. It is not affiliated with, endorsed by, or supported by Home Assistant.
