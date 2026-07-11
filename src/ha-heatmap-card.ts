@@ -46,6 +46,7 @@ class HaHeatmapCard extends LitElement {
   private _imageLoaded = false;
   private _copyStatus = '';
   private _draggingIndex: number | null = null;
+  private _activeDragTarget: HTMLElement | null = null;
 
   static override styles = css`
     :host {
@@ -207,6 +208,7 @@ class HaHeatmapCard extends LitElement {
     event.preventDefault();
     this._finishDrag();
     this._draggingIndex = index;
+    this._activeDragTarget = event.currentTarget as HTMLElement;
     window.addEventListener('pointermove', this._onPointerMove);
     window.addEventListener('pointerup', this._finishDrag, { once: true });
     window.addEventListener('pointercancel', this._finishDrag, { once: true });
@@ -228,13 +230,23 @@ class HaHeatmapCard extends LitElement {
     const entity = this._config.entities[index];
     entity.x = Number(x.toFixed(4));
     entity.y = Number(y.toFixed(4));
-    this.requestUpdate();
-    this._redraw();
+    // Rendering the full IDW image is expensive. Move the DOM target smoothly
+    // during a drag, then update the canvas once when the pointer is released.
+    if (this._activeDragTarget) {
+      this._activeDragTarget.style.left = `${entity.x * 100}%`;
+      this._activeDragTarget.style.top = `${entity.y * 100}%`;
+    }
   }
 
   private _finishDrag = (): void => {
+    const didDrag = this._draggingIndex !== null;
     this._draggingIndex = null;
+    this._activeDragTarget = null;
     window.removeEventListener('pointermove', this._onPointerMove);
+    if (didDrag) {
+      this.requestUpdate();
+      this._redraw();
+    }
   };
 
   private async _copyYaml(): Promise<void> {
