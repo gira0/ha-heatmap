@@ -34,6 +34,8 @@ Render IDW (Inverse Distance Weighting) heatmaps over a floorplan image. Sensor 
 
 Use the dashboard's **Edit card** action to configure the card without writing YAML. The visual editor lets you search and add `sensor` entities, set their initial coordinates, remove sensors, and change the heatmap settings. Enable **Calibration Mode** there to drag targets directly over the floorplan, then use **Copy YAML** to preserve the calibrated coordinates.
 
+If no floorplan image is configured, the card displays a bundled sample floorplan. It is intended as an editor placeholder; set `background_image` to use your own image.
+
 ```yaml
 type: custom:ha-heatmap-card
 background_image: /local/floorplan.png
