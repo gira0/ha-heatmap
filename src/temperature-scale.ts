@@ -1,4 +1,4 @@
-export type TemperatureScaleMode = 'fixed' | 'auto';
+export type TemperatureScaleMode = 'fixed' | 'auto' | 'percentile';
 
 export interface TemperatureScaleOptions {
   mode: TemperatureScaleMode;
@@ -6,6 +6,8 @@ export interface TemperatureScaleOptions {
   maxValue: number;
   padding: number;
   minSpan: number;
+  lowerPercentile?: number;
+  upperPercentile?: number;
   clampMin?: number;
   clampMax?: number;
 }
@@ -18,9 +20,10 @@ export interface TemperatureRange {
 /**
  * Resolve the color range for the current sensor readings.
  *
- * Fixed mode always returns the configured min/max. Auto mode expands the
- * current valid reading range by padding, ensures a minimum span around its
- * midpoint, then applies optional safety clamps.
+ * Fixed mode always returns the configured min/max. Auto mode uses the full
+ * valid reading range; percentile mode uses configurable quantiles to reduce
+ * the influence of extreme readings. Both adaptive modes add padding, enforce
+ * a minimum span, then apply optional safety clamps.
  */
 export function resolveTemperatureRange(
   values: readonly number[],
@@ -35,8 +38,16 @@ export function resolveTemperatureRange(
     return { min: options.minValue, max: options.maxValue };
   }
 
-  let min = Math.min(...finiteValues) - Math.max(0, options.padding);
-  let max = Math.max(...finiteValues) + Math.max(0, options.padding);
+  const sortedValues = [...finiteValues].sort((a, b) => a - b);
+  const lower = options.mode === 'percentile'
+    ? quantile(sortedValues, options.lowerPercentile ?? 10)
+    : sortedValues[0];
+  const upper = options.mode === 'percentile'
+    ? quantile(sortedValues, options.upperPercentile ?? 90)
+    : sortedValues[sortedValues.length - 1];
+
+  let min = lower - Math.max(0, options.padding);
+  let max = upper + Math.max(0, options.padding);
   const minimumSpan = Math.max(0, options.minSpan);
 
   if (max - min < minimumSpan) {
@@ -54,4 +65,14 @@ export function resolveTemperatureRange(
   }
 
   return { min, max };
+}
+
+/** Linear-interpolated percentile with inputs constrained to [0, 100]. */
+function quantile(sortedValues: readonly number[], percentile: number): number {
+  const p = Math.max(0, Math.min(100, percentile)) / 100;
+  const index = (sortedValues.length - 1) * p;
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+  const fraction = index - lowerIndex;
+  return sortedValues[lowerIndex] + fraction * (sortedValues[upperIndex] - sortedValues[lowerIndex]);
 }

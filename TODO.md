@@ -6,7 +6,7 @@
 - [x] Add `temperature_scale` option with `fixed` and `auto` modes
 - [x] Support `min_value` / `max_value` for fixed mode
 - [x] In `auto` mode, derive the scale from current valid sensor values with a configurable padding
-- [ ] In `percentile` mode, ignore extreme outliers when deriving the colour scale
+- [x] In `percentile` mode, ignore extreme outliers when deriving the colour scale
 - [x] Add a `min_span` setting so near-identical temperatures still produce visible contrast
 - [x] Add optional `clamp_min` / `clamp_max` safety limits for automatic scaling
 - [ ] Display a compact colour legend with the active low and high temperatures

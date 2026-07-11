@@ -45,6 +45,8 @@ interface CardConfig {
   temperature_scale?: TemperatureScaleMode;
   scale_padding?: number;
   min_span?: number;
+  lower_percentile?: number;
+  upper_percentile?: number;
   clamp_min?: number;
   clamp_max?: number;
   power?: number;
@@ -192,8 +194,8 @@ class HaHeatmapCard extends LitElement {
     if (config.edit_mode !== undefined && typeof config.edit_mode !== 'boolean') {
       throw new Error('ha-heatmap-card: edit_mode must be true or false');
     }
-    if (config.temperature_scale !== undefined && !['fixed', 'auto'].includes(config.temperature_scale)) {
-      throw new Error('ha-heatmap-card: temperature_scale must be fixed or auto');
+    if (config.temperature_scale !== undefined && !['fixed', 'auto', 'percentile'].includes(config.temperature_scale)) {
+      throw new Error('ha-heatmap-card: temperature_scale must be fixed, auto, or percentile');
     }
     // Home Assistant may freeze the configuration object it passes to cards.
     // Keep a private copy because calibration mode updates entity coordinates.
@@ -333,6 +335,8 @@ class HaHeatmapCard extends LitElement {
       ['temperature_scale', config.temperature_scale],
       ['scale_padding', config.scale_padding],
       ['min_span', config.min_span],
+      ['lower_percentile', config.lower_percentile],
+      ['upper_percentile', config.upper_percentile],
       ['clamp_min', config.clamp_min],
       ['clamp_max', config.clamp_max],
       ['power', config.power],
@@ -394,6 +398,8 @@ class HaHeatmapCard extends LitElement {
       maxValue: this._config.max_value ?? 27,
       padding: this._config.scale_padding ?? 2,
       minSpan: this._config.min_span ?? 6,
+      lowerPercentile: this._config.lower_percentile ?? 10,
+      upperPercentile: this._config.upper_percentile ?? 90,
       clampMin: this._config.clamp_min,
       clampMax: this._config.clamp_max,
     });
@@ -594,14 +600,19 @@ class HaHeatmapCardEditor extends LitElement {
           <select .value=${this._config.temperature_scale ?? 'fixed'} @change=${this._setScaleMode}>
             <option value="fixed">Fixed range</option>
             <option value="auto">Automatic range from current sensors</option>
+            <option value="percentile">Automatic range ignoring extreme readings</option>
           </select>
         </div>
         <div class="grid">
           ${this._numberField('Minimum value', 'min_value', 18, 0.1)}
           ${this._numberField('Maximum value', 'max_value', 27, 0.1)}
-          ${this._config.temperature_scale === 'auto' ? html`
+          ${this._config.temperature_scale === 'auto' || this._config.temperature_scale === 'percentile' ? html`
             ${this._numberField('Scale padding', 'scale_padding', 2, 0.1, 0)}
             ${this._numberField('Minimum scale span', 'min_span', 6, 0.1, 0)}
+            ${this._config.temperature_scale === 'percentile' ? html`
+              ${this._numberField('Lower percentile', 'lower_percentile', 10, 1, 0, 100)}
+              ${this._numberField('Upper percentile', 'upper_percentile', 90, 1, 0, 100)}
+            ` : ''}
             ${this._optionalNumberField('Clamp minimum (optional)', 'clamp_min', 0.1)}
             ${this._optionalNumberField('Clamp maximum (optional)', 'clamp_max', 0.1)}
           ` : ''}
@@ -620,7 +631,7 @@ class HaHeatmapCardEditor extends LitElement {
 
   private _numberField(
     label: string,
-    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'lower_percentile' | 'upper_percentile' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
     defaultValue: number,
     step: number,
     min?: number,
@@ -665,7 +676,7 @@ class HaHeatmapCardEditor extends LitElement {
   }
 
   private _setNumber(
-    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
+    key: keyof Pick<CardConfig, 'min_value' | 'max_value' | 'scale_padding' | 'min_span' | 'lower_percentile' | 'upper_percentile' | 'clamp_min' | 'clamp_max' | 'power' | 'resolution_scale' | 'opacity' | 'marker_size'>,
     event: Event,
   ): void {
     const value = Number((event.target as HTMLInputElement).value);

@@ -38,6 +38,28 @@ describe('resolveTemperatureRange', () => {
     })).toEqual({ min: 24.9, max: 35 });
   });
 
+  it('uses percentiles to reduce the influence of an extreme reading', () => {
+    expect(resolveTemperatureRange([26, 27, 28, 29, 35], {
+      ...fixed,
+      mode: 'percentile',
+      padding: 0,
+      minSpan: 0,
+      lowerPercentile: 25,
+      upperPercentile: 75,
+    })).toEqual({ min: 27, max: 29 });
+  });
+
+  it('constrains invalid percentile values to the available range', () => {
+    expect(resolveTemperatureRange([20, 30], {
+      ...fixed,
+      mode: 'percentile',
+      padding: 0,
+      minSpan: 0,
+      lowerPercentile: -10,
+      upperPercentile: 110,
+    })).toEqual({ min: 20, max: 30 });
+  });
+
   it('falls back to configured bounds for inverted clamps', () => {
     expect(resolveTemperatureRange([28], {
       ...fixed,
