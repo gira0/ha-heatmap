@@ -29,6 +29,7 @@ interface CardConfig {
   power?: number;
   resolution_scale?: number;
   opacity?: number;
+  marker_size?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,9 @@ class HaHeatmapCard extends LitElement {
       if (typeof e.x !== 'number' || typeof e.y !== 'number') {
         throw new Error(`ha-heatmap-card: entity ${e.entity_id} needs numeric x and y`);
       }
+    }
+    if (config.marker_size !== undefined && typeof config.marker_size !== 'number') {
+      throw new Error('ha-heatmap-card: marker_size must be a number');
     }
     this._config = config;
     this._lastStates = {};
@@ -168,7 +172,7 @@ class HaHeatmapCard extends LitElement {
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
-    this._drawSensorMarkers(ctx, points, width, height);
+    this._drawSensorMarkers(ctx, points, width, height, img.clientWidth);
   }
 
   private _drawSensorMarkers(
@@ -176,10 +180,14 @@ class HaHeatmapCard extends LitElement {
     points: readonly SensorPoint[],
     width: number,
     height: number,
+    displayWidth: number,
   ): void {
-    // Scale labels with the image's intrinsic dimensions so they remain
-    // legible when the floorplan is displayed at different card sizes.
-    const radius = Math.max(14, Math.min(40, Math.min(width, height) * 0.025));
+    // Canvas pixels use the image's intrinsic dimensions, while the image is
+    // displayed at a CSS width. Convert a desired displayed-pixel radius to
+    // canvas pixels so markers remain a consistent visible size.
+    const markerSize = Math.max(8, Math.min(48, this._config?.marker_size ?? 16));
+    const canvasScale = width / (displayWidth || width);
+    const radius = markerSize * canvasScale;
 
     ctx.save();
     ctx.font = `bold ${Math.round(radius * 0.8)}px sans-serif`;
