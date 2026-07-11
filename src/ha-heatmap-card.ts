@@ -37,6 +37,8 @@ interface EntityConfig {
   y: number;
 }
 
+type MarkerShape = 'box' | 'circle';
+
 interface CardConfig {
   background_image: string;
   entities: EntityConfig[];
@@ -53,6 +55,7 @@ interface CardConfig {
   resolution_scale?: number;
   opacity?: number;
   marker_size?: number;
+  marker_shape?: MarkerShape;
   /** Show draggable calibration targets and a Copy YAML control. */
   edit_mode?: boolean;
 }
@@ -190,6 +193,9 @@ class HaHeatmapCard extends LitElement {
     }
     if (config.marker_size !== undefined && typeof config.marker_size !== 'number') {
       throw new Error('ha-heatmap-card: marker_size must be a number');
+    }
+    if (config.marker_shape !== undefined && !['box', 'circle'].includes(config.marker_shape)) {
+      throw new Error('ha-heatmap-card: marker_shape must be box or circle');
     }
     if (config.edit_mode !== undefined && typeof config.edit_mode !== 'boolean') {
       throw new Error('ha-heatmap-card: edit_mode must be true or false');
@@ -343,6 +349,7 @@ class HaHeatmapCard extends LitElement {
       ['resolution_scale', config.resolution_scale],
       ['opacity', config.opacity],
       ['marker_size', config.marker_size],
+      ['marker_shape', config.marker_shape],
     ].filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}: ${value}`);
 
@@ -434,6 +441,7 @@ class HaHeatmapCard extends LitElement {
     // displayed at a CSS width. Convert a desired displayed-pixel radius to
     // canvas pixels so markers remain a consistent visible size.
     const markerSize = Math.max(8, Math.min(48, this._config?.marker_size ?? 16));
+    const markerShape = this._config?.marker_shape ?? 'box';
     const canvasScale = width / (displayWidth || width);
     const minimumRadius = markerSize * canvasScale;
 
@@ -450,20 +458,49 @@ class HaHeatmapCard extends LitElement {
       // Decimal values such as "28.2°" are wider than integer labels. Give
       // every label horizontal padding and grow its circle when necessary.
       const labelWidth = ctx.measureText(label).width;
+      const horizontalPadding = fontSize * 0.65;
+      const verticalPadding = fontSize * 0.45;
       const radius = Math.max(minimumRadius, labelWidth / 2 + fontSize * 0.45);
 
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      if (markerShape === 'circle') {
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      } else {
+        const markerWidth = Math.max(minimumRadius * 2, labelWidth + horizontalPadding * 2);
+        const markerHeight = Math.max(minimumRadius * 2, fontSize + verticalPadding * 2);
+        this._roundedRect(ctx, cx - markerWidth / 2, cy - markerHeight / 2, markerWidth, markerHeight, fontSize * 0.35);
+      }
       ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
       ctx.fill();
       ctx.strokeStyle = '#1f2937';
-      ctx.lineWidth = Math.max(1.5, radius * 0.1);
+      ctx.lineWidth = Math.max(1.5, minimumRadius * 0.1);
       ctx.stroke();
       ctx.fillStyle = '#111827';
       ctx.fillText(label, cx, cy);
     }
 
     ctx.restore();
+  }
+
+  private _roundedRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): void {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 }
 
@@ -620,6 +657,13 @@ class HaHeatmapCardEditor extends LitElement {
           ${this._numberField('Resolution scale', 'resolution_scale', 1, 0.05, 0.05, 1)}
           ${this._numberField('Opacity', 'opacity', 0.7, 0.05, 0, 1)}
           ${this._numberField('Marker size', 'marker_size', 16, 1, 8, 48)}
+          <div class="field">
+            <label>Marker shape</label>
+            <select .value=${this._config.marker_shape ?? 'box'} @change=${this._setMarkerShape}>
+              <option value="box">Box</option>
+              <option value="circle">Circle</option>
+            </select>
+          </div>
         </div>
         <label class="toggle">
           <input type="checkbox" .checked=${this._config.edit_mode === true} @change=${this._setEditMode} />
@@ -694,6 +738,10 @@ class HaHeatmapCardEditor extends LitElement {
 
   private _setScaleMode = (event: Event): void => {
     this._updateConfig({ temperature_scale: (event.target as HTMLSelectElement).value as TemperatureScaleMode });
+  };
+
+  private _setMarkerShape = (event: Event): void => {
+    this._updateConfig({ marker_shape: (event.target as HTMLSelectElement).value as MarkerShape });
   };
 
   private _addEntity = (): void => {

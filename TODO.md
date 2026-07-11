@@ -16,7 +16,7 @@
 ## Sensor Marker Improvements
 
 - [ ] Optionally show the sensor friendly name below each temperature marker
-- [ ] Add marker styles: temperature only, name plus temperature, or hidden
+- [x] Add marker styles: boxed temperature (default) or circle
 - [ ] Add an optional colour swatch on each marker matching its interpolated heatmap colour
 
 ## Editor and Calibration Improvements
