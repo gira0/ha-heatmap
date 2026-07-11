@@ -31,5 +31,5 @@
 
 - [ ] Test the card in a real Home Assistant dashboard
 - [ ] Add card-level lifecycle and configuration tests
-- [ ] Initialize Git repository and add CI for tests, typecheck, and build
+- [x] Initialize Git repository and add CI for tests, typecheck, and build
 - [ ] Tag and publish the first HACS release

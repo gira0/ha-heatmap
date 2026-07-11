@@ -6,9 +6,10 @@ A Home Assistant Lovelace custom card that renders IDW (Inverse Distance Weighti
 
 ### HACS
 
-1. Add this repository to HACS as a custom frontend resource.
-2. Install **ha-heatmap-card**.
-3. Add the resource to your Lovelace configuration (done automatically by HACS).
+1. In **HACS → Frontend**, open the overflow menu and select **Custom repositories**.
+2. Add `https://github.com/gira0/ha-heatmap` with category **Dashboard**.
+3. Find and install **ha-heatmap-card**.
+4. Add the resource to your Lovelace configuration if HACS does not register it automatically.
 
 ### Manual
 
